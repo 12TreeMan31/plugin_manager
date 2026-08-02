@@ -1,5 +1,2 @@
-build:
-	gcc -Wall -I. src/main.c
-
-lib:
-	gcc -Wall -I. -fPIC -shared -o libdyn.so src/example_plugin.c
+exlib:
+	gcc -Wall -Iincludes -std=c23 -fPIC -shared -o libexample.so example/example_plugin.c

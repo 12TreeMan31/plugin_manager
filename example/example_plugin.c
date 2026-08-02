@@ -1,25 +1,48 @@
-#include "includes/abi.h"
 #include <stdio.h>
+#include <stdlib.h>
 
-char *hello(char *name) {
-    printf("Hello, %s!\n", name);
-    return NULL;
+#include "abi.h"
+
+PluginString hello_fmt(const char *name) {
+    char *buffer = calloc(20, sizeof(char));
+    snprintf(buffer, 20, "Hello %s!", name);
+
+    PluginString ret = {
+        .data = buffer,
+        .kind = PLUGIN_STRING_OWNED,
+    };
+
+    return ret;
 }
 
-char *goodbye(char *name) {
-    printf("Goodbye %s\n", name);
-    return NULL;
+PluginString goodbye(const char *_json) {
+    PluginString ret = {
+        .data = "Goodbye everyone!",
+        .kind = PLUGIN_STRING_STATIC,
+    };
+
+    return ret;
 }
 
 const PluginFunction functions[] = {
-    {"hello", hello},
+    {"hello", hello_fmt},
     {"goodbye", goodbye},
 };
 
+void string_free(PluginString str) {
+    if (str.kind == PLUGIN_STRING_STATIC) {
+        return;
+    }
+
+    free(str.data);
+}
+
 PluginInfo info = {
     .plugin_name = "example_plugin",
+    .version = 1,
     .fn_count = 2,
     .fns = functions,
+    .free = string_free,
 };
 
 PluginInfo *plg_endpoints(void) {

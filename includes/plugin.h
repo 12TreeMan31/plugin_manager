@@ -1,28 +1,26 @@
 #ifndef PLUGIN_H
 #define PLUGIN_H
 
-#include <stdbool.h>
-
-#include "includes/abi.h"
+#include "abi.h"
 
 typedef struct Plugin {
     void *handle;
     PluginInfo *(*plg_endpoints)(void);
     PluginInfo *info;
-
-    struct Plugin *next;
 } Plugin;
 
 typedef struct PluginError {
-    bool isError;
+    bool is_error;
     union {
         char *error;
-        Plugin *plg;
+        Plugin plg;
     } data;
 } PluginError;
 
-PluginError plugin_register(const char *path);
-void plugin_deregister(Plugin *plg);
-int plugin_append(Plugin **plgs, Plugin *new_plg);
+PluginError plugin_register(const char *restrict path);
+void plugin_deregister(Plugin self);
+char *plugin_name(const Plugin *self);
+char *plugin_call(const Plugin *restrict self, const char *function, const char *json);
+unsigned int plugin_version(const Plugin *self);
 
 #endif
