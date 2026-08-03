@@ -20,7 +20,9 @@ typedef struct PluginError {
 PluginError plugin_register(const char *restrict path);
 void plugin_deregister(Plugin self);
 char *plugin_name(const Plugin *self);
-char *plugin_call(const Plugin *restrict self, const char *function, const char *json);
+PluginString plugin_call(const Plugin *restrict self, const char *function, const char *json);
 unsigned int plugin_version(const Plugin *self);
+
+void plugin_string_free(const Plugin *self, PluginString str);
 
 #endif

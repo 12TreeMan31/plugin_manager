@@ -1,1 +1,1 @@
-# Generic Plugin Manager
+# Plugin Manager

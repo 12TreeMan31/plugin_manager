@@ -1,12 +1,36 @@
 #include <dlfcn.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h> // strcmp
 
-#include "includes/abi.h"
-#include "includes/plugin.h"
+#include "abi.h"
+#include "plugin.h"
 
-PluginError plugin_register(const char *path) {
+char *plugin_name(const Plugin *self) {
+    return self->info->plugin_name;
+}
+
+unsigned int plugin_version(const Plugin *self) {
+    return self->info->version;
+}
+
+PluginString plugin_call(const Plugin *restrict self, const char *function, const char *json) {
+    PluginInfo *info = self->info;
+
+    for (int i = 0; i < info->fn_count; i++) {
+        if (strcmp(function, info->fns[i].name) == 0) {
+            return info->fns[i].function(json);
+        }
+    }
+
+    PluginString err = {
+        .data = NULL,
+        .kind = PLUGIN_STRING_STATIC,
+    };
+
+    return err;
+}
+
+PluginError plugin_register(const char *restrict path) {
     char *err_msg = NULL;
 
     void *handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -30,18 +54,14 @@ PluginError plugin_register(const char *path) {
         goto ERROR;
     }
 
-    Plugin *endpoint = malloc(sizeof(*endpoint));
-    if (!endpoint) {
-        err_msg = "malloc failed";
-        goto ERROR;
-    }
-
-    endpoint->handle = handle;
-    endpoint->info = info;
-    endpoint->plg_endpoints = plg_endpoints;
+    Plugin endpoint = {
+        .handle = handle,
+        .info = info,
+        .plg_endpoints = plg_endpoints,
+    };
 
     PluginError ok = {
-        .isError = false,
+        .is_error = false,
         .data.plg = endpoint,
     };
 
@@ -51,63 +71,18 @@ ERROR:
     dlclose(handle);
 LINK_ERR:
     PluginError err = {
-        .isError = true,
+        .is_error = true,
         .data.error = err_msg,
     };
 
     return err;
 }
 
-void plugin_deregister(Plugin *plg) {
+void plugin_deregister(Plugin self) {
     // Please read the man pages for this
-    dlclose(plg->handle);
-    free(plg);
+    dlclose(self.handle);
 }
 
-// In order to make reloading simpler, we will just override the namespace
-int plugin_append(Plugin **plgs, Plugin *new_plg) {
-    if (!new_plg || !plgs) {
-        return -1;
-    }
-
-    // First plugin to be loaded
-    if (*plgs == NULL) {
-        *plgs = new_plg;
-        new_plg->next = NULL;
-
-        return 0;
-    }
-
-    // Sliding window of width 2
-    Plugin *curr = *plgs;
-    Plugin *prev = NULL;
-
-    while (curr) {
-        // Replace plugin with same namespace
-        if (strcmp(curr->info->plugin_name, new_plg->info->plugin_name) == 0) {
-            new_plg->next = curr->next;
-
-            // RACE CONDITION: Not atomic or locked
-            if (prev == NULL) {
-                // Replace the head
-                *plgs = new_plg;
-            } else {
-                // Insert in place
-                prev->next = new_plg;
-            }
-
-            deregister_plugin(curr);
-
-            return 0;
-        }
-
-        prev = curr;
-        curr = curr->next;
-    }
-
-    // Add plugin to list
-    new_plg->next = *plgs;
-    *plgs = new_plg;
-
-    return 0;
+void plugin_string_free(const Plugin *self, PluginString str) {
+    self->info->string_free(str);
 }

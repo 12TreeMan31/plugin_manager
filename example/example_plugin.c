@@ -42,7 +42,7 @@ PluginInfo info = {
     .version = 1,
     .fn_count = 2,
     .fns = functions,
-    .free = string_free,
+    .string_free = string_free,
 };
 
 PluginInfo *plg_endpoints(void) {

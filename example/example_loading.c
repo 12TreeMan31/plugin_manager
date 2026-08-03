@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "includes/abi.h"
+#include "abi.h"
 
 typedef struct {
     void *handle;

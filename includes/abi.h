@@ -37,7 +37,7 @@ typedef struct {
     const unsigned long fn_count;
 
     const PluginFunction *fns;
-    const PluginFreeFn free;
+    const PluginFreeFn string_free;
 } PluginInfo;
 
 #endif
