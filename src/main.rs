@@ -28,12 +28,14 @@ async fn plugin_manager(
     mut plugin_rx: mpsc::UnboundedReceiver<Client>,
     mut user_rx: mpsc::UnboundedReceiver<Command>,
 ) -> ! {
-    let manager = PluginManager::new();
+    let mut manager = PluginManager::new();
 
     loop {
         tokio::select! {
-            Some(client) = plugin_rx.recv() => {}
-            Some(command) = user_rx.recv() => {}
+            Some(client) = plugin_rx.recv() => println!("client connected"),
+            Some(command) = user_rx.recv() => {
+                exe(command, &mut manager);
+            },
         }
     }
 }
@@ -63,9 +65,9 @@ async fn handle_connection(stream: TcpStream, tx: mpsc::UnboundedSender<Client>)
 
     let client = Client {
         socket: ws_stream,
-        namespace,
+        namespace: namespace.clone(),
     };
-
+    println!("Client is with {}", namespace);
     tx.send(client).unwrap();
 }
 
@@ -74,7 +76,14 @@ async fn main() {
     let (ptx, prx) = mpsc::unbounded_channel();
     let (utx, urx) = mpsc::unbounded_channel();
 
-    //let _ = tokio::spawn(plugin_manager(prx, urx));
+    thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Could not break runtime");
+
+        rt.block_on(plugin_manager(prx, urx));
+    });
     thread::spawn(|| user_input(utx));
 
     let listener = TcpListener::bind(DEFAULT_ADDR)

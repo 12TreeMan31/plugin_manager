@@ -1,6 +1,9 @@
+use crate::plugin::PluginManager;
 use std::io;
+use std::path::Path;
 use tokio::sync::mpsc;
 
+#[derive(Debug)]
 pub enum Command {
     Load(String),
     Remove(String),
@@ -14,7 +17,7 @@ pub fn user_input(tx: mpsc::UnboundedSender<Command>) -> ! {
         let mut buffer = String::new();
         handle.read_line(&mut buffer).unwrap();
 
-        let mut iter = buffer.split(' ');
+        let mut iter = buffer.split_ascii_whitespace();
 
         let command: Option<Command> = match iter.next() {
             Some(x) => match x {
@@ -31,5 +34,17 @@ pub fn user_input(tx: mpsc::UnboundedSender<Command>) -> ! {
         };
 
         tx.send(cmd).unwrap();
+    }
+}
+
+pub fn exe(cmd: Command, manager: &mut PluginManager) {
+    match cmd {
+        Command::List => {
+            for x in manager.plugins() {
+                println!("{}", x);
+            }
+        }
+        Command::Load(s) => manager.register(Path::new(&s)).unwrap(),
+        Command::Remove(s) => (),
     }
 }

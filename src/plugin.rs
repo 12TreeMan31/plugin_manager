@@ -34,31 +34,13 @@ impl PluginManager {
         unimplemented!()
     }
 
+    pub fn plugins(&self) -> Vec<String> {
+        self.inner.iter().map(|x| x.name()).collect()
+    }
+
     pub fn exists(&self, namespace: &str) -> bool {
         self.inner.iter().map(|x| x.name()).any(|x| x == namespace)
     }
-
-    //fn get_namespace(plg: &Plugin) -> String {
-    /*    let ptr = unsafe { plugin_namespace(plg as *const Plugin) };
-        let namespace = unsafe { CString::from_raw(ptr) };
-
-        namespace.to_str().unwrap().to_string()
-    }
-
-    pub fn exists(&self, namespace: &str) -> bool {
-        false
-    }
-
-    pub fn join_namespace(&mut self, stream: ) -> Result<(), ()> {
-
-
-
-        unimplemented!()
-    }*/
-
-    // pub fn enter_context<'a>(&'a self) -> Option<Context<'a>> {
-    //     unimplemented!()
-    // }
 }
 
 mod ffi {
