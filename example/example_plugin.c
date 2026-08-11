@@ -1,3 +1,4 @@
+/// Example on how to write a plugin in C though it should be about the same in Rust.
 #include <stdio.h>
 #include <stdlib.h>
 

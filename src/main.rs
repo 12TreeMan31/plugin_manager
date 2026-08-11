@@ -5,86 +5,32 @@
     Task ends when the client closes the stream
 */
 
-use futures_util::StreamExt;
+use plugin_manager::client::*;
 use plugin_manager::commands::*;
-use plugin_manager::plugin::PluginManager;
+use plugin_manager::plugin::*;
 use std::thread;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::sync::mpsc;
-use tokio_tungstenite::{WebSocketStream, accept_hdr_async};
-use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:8080";
 
-struct Client {
-    pub socket: WebSocketStream<TcpStream>,
-    pub namespace: String,
-}
-
-/// Main event loop for the plugin manager that can:
-/// * Manage plugins from the user (load or remove)
-/// * Allow clients to join a loaded plugins namespace
-async fn plugin_manager(
-    mut plugin_rx: mpsc::UnboundedReceiver<Client>,
-    mut user_rx: mpsc::UnboundedReceiver<Command>,
-) -> ! {
-    let mut manager = PluginManager::new();
-
-    loop {
-        tokio::select! {
-            Some(client) = plugin_rx.recv() => println!("client connected"),
-            Some(command) = user_rx.recv() => {
-                exe(command, &mut manager);
-            },
-        }
-    }
-}
-
-/// Steps to connect a client to plugin
-/// * Preform http upgrade request and check for `Plugin-Name` header and store to later
-/// * Send that stream and header to the plugin manager
-async fn handle_connection(stream: TcpStream, tx: mpsc::UnboundedSender<Client>) {
-    let mut namespace: String = Default::default();
-
-    let Ok(ws_stream) = accept_hdr_async(stream, |req: &Request, res: Response| {
-        let Some(x) = req.headers().get("Plugin-Name") else {
-            return Err(ErrorResponse::new(Some("Missing Plugin-Name".to_string())));
-        };
-
-        namespace = x
-            .to_str()
-            .map_err(|e| ErrorResponse::new(Some(e.to_string())))?
-            .to_string();
-
-        Ok(res)
-    })
-    .await
-    else {
-        return;
-    };
-
-    let client = Client {
-        socket: ws_stream,
-        namespace: namespace.clone(),
-    };
-    println!("Client is with {}", namespace);
-    tx.send(client).unwrap();
-}
-
 #[tokio::main]
 async fn main() {
-    let (ptx, prx) = mpsc::unbounded_channel();
-    let (utx, urx) = mpsc::unbounded_channel();
+    // Channels used to talk with `plugin::plugin_handler`
+    let (plg_tx, plg_rx) = mpsc::unbounded_channel();
+
+    // Needs to be sync, see `tokio::io::stdin`
+    let cl_plg_tx = plg_tx.clone();
+    thread::spawn(move || user_input(cl_plg_tx));
 
     thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .expect("Could not break runtime");
+            .expect("Could not build runtime");
 
-        rt.block_on(plugin_manager(prx, urx));
+        rt.block_on(plugin_handler(plg_rx));
     });
-    thread::spawn(|| user_input(utx));
 
     let listener = TcpListener::bind(DEFAULT_ADDR)
         .await
@@ -96,6 +42,6 @@ async fn main() {
     while let Ok((stream, addr)) = listener.accept().await {
         println!("New connection from: {}", addr);
         // Spawn a task for each connection (non-blocking)
-        tokio::spawn(handle_connection(stream, ptx.clone()));
+        tokio::spawn(handle_connection(stream, plg_tx.clone()));
     }
 }
