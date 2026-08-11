@@ -1,19 +1,26 @@
 #ifndef ABI_H
 #define ABI_H
 
-/// There are a couple of things to keep in mind while making a plugin
-/// - All types below expect to have a static lifetime.
-/// - In the case of `PluginFn`, its lifetime is for the duration that the plugin is loaded
-/// - The plugin is only reqired to implement the function with the signature `const
-/// PluginInfo *plg_endpoints(void)`. Return NULL if error.
-/// - Function will always receiving and returning a JSON object.
-/// - All plugins are expected the be thread safe if you want multiple computers using it.
+/// There are two things to keep in mind while designing a plugin:
+/// - All pointers in `PluginInfo` MUST be valid for the lifetime of the plugin.
+/// - All functions MUST be thread safe.
+/// Failure to do so will result in a program crash.
+///
+/// A plugin must implement:
+/// - `plg_endpoints` which returns `PluginInfo`. `plg_endpoints` is the first thing
+/// called when registering a plugin. It may return NULL if there is an error.
+/// - All functions to be used across the ABI must be `PluginFn`.
+/// - `PluginFreeFn` which for for freeing `PluginString`s.
+/// - All `PluginString` must be valid null terminated UTF8 string.
+/// - Anything not listed here means its free game
 
+/// String lifetimes
 typedef enum {
     PLUGIN_STRING_STATIC,
     PLUGIN_STRING_OWNED,
 } PluginStringKind;
 
+/// A string with a static or dynamic lifetime
 typedef struct {
     char *data;
     PluginStringKind kind;
@@ -31,13 +38,19 @@ typedef struct {
 } PluginFunction;
 
 typedef struct {
-    /// The namespace given to this plugin to be referenced by CC
-    const char *plugin_name;
-    const unsigned int version;
-    const unsigned long fn_count;
+    /// The name given to this plugin to be referenced by CC
+    char *plugin_name;
+    /// Version used for debug information
+    unsigned int version;
+    /// Number of elements in `fns`
+    unsigned long fn_count;
 
-    const PluginFunction *fns;
-    const PluginFreeFn string_free;
+    /// Function call table
+    PluginFunction *fns;
+    PluginFreeFn string_free;
 } PluginInfo;
+
+/// Plugin entrypoint
+typedef const PluginInfo *(*plg_endpoints)(void);
 
 #endif

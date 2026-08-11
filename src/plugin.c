@@ -30,6 +30,7 @@ PluginString plugin_call(const Plugin *restrict self, const char *function, cons
     return err;
 }
 
+/// Loads the share lib
 PluginError plugin_register(const char *restrict path) {
     char *err_msg = NULL;
 

@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::str;
 use tokio::sync::{mpsc, oneshot};
 
-pub enum PluginCallError {
+type Sender = mpsc::UnboundedSender<(PluginMessage, oneshot::Sender<Option<String>>)>;
+
+pub enum CallError {
     NullByte,
     InvalidUtf8,
     UnknownFunction,
@@ -32,41 +34,40 @@ impl PluginManager {
         self.plugins().any(|n| n == plugin)
     }
 
-    pub fn register(&mut self, path: &Path) -> Result<(), PluginCallError> {
+    pub fn register(&mut self, path: &Path) -> Result<(), CallError> {
         if !path.exists() {
-            return Err(PluginCallError::InvalidPath);
+            return Err(CallError::InvalidPath);
         }
 
-        let c_path =
-            CString::new(path.as_os_str().as_bytes()).map_err(|_| PluginCallError::NullByte)?;
+        let c_path = CString::new(path.as_os_str().as_bytes()).map_err(|_| CallError::NullByte)?;
 
         let res = unsafe { plugin_register(c_path.as_ptr()) };
         if res.is_error {
             let err = unsafe { CStr::from_ptr(res.data.error) };
-            let err = err.to_str().map_err(|_| PluginCallError::InvalidUtf8)?;
-            return Err(PluginCallError::Plugin(err.to_string()));
+            let err = err.to_str().map_err(|_| CallError::InvalidUtf8)?;
+            return Err(CallError::Plugin(err.to_string()));
         }
 
         // Not unsafe due to previous check
         unsafe { self.inner.push(res.data.plg) };
         Ok(())
     }
-    pub fn deregister(&mut self, plugin: &str) -> Result<(), PluginCallError> {
+    pub fn deregister(&mut self, plugin: &str) -> Result<(), CallError> {
         if !self.exists(plugin) {
-            return Err(PluginCallError::UnknownFunction);
+            return Err(CallError::UnknownFunction);
         }
 
         unimplemented!()
     }
 
-    pub fn call(&self, plugin: &str, func: &str, json: &str) -> Result<String, PluginCallError> {
+    pub fn call(&self, plugin: &str, func: &str, json: &str) -> Result<String, CallError> {
         let Some(plg) = self
             .inner
             .iter()
             .find(|&x| x.name() == plugin)
             .map(|p| p.call(func, json))
         else {
-            return Err(PluginCallError::UnknownFunction);
+            return Err(CallError::UnknownFunction);
         };
 
         plg
@@ -79,7 +80,7 @@ impl Display for PluginManager {
             .inner
             .iter()
             .enumerate()
-            .map(|(x, y)| format!("{} - {}\n", x, y.to_string()))
+            .map(|(x, y)| format!("{}. {}\n", x, y.to_string()))
             .collect();
 
         write!(f, "{}", s)
@@ -102,6 +103,12 @@ pub enum PluginMessage {
         plugin: String,
     },
     List,
+}
+
+pub enum Response {
+    Message(String),
+    List(String),
+    Exists(bool),
 }
 
 pub async fn plugin_handler(
@@ -135,11 +142,14 @@ pub async fn plugin_handler(
 }
 
 mod ffi {
-    use super::PluginCallError;
+    use super::CallError;
     use std::ffi::{CStr, CString};
     use std::fmt::Display;
 
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+    /// Plugin only ever points to static memory from a loaded shared library
+    unsafe impl Send for Plugin {}
 
     impl Plugin {
         pub fn name(&self) -> &str {
@@ -154,9 +164,9 @@ mod ffi {
         }
 
         // .map_err(|| format!("Plugin {} function {} returned a invalid utf8 string!"));
-        pub fn call(&self, name: &str, json: &str) -> Result<String, PluginCallError> {
-            let c_name = CString::new(name).map_err(|_| PluginCallError::NullByte)?;
-            let c_json = CString::new(json).map_err(|_| PluginCallError::NullByte)?;
+        pub fn call(&self, name: &str, json: &str) -> Result<String, CallError> {
+            let c_name = CString::new(name).map_err(|_| CallError::NullByte)?;
+            let c_json = CString::new(json).map_err(|_| CallError::NullByte)?;
 
             let result = unsafe { plugin_call(self as *const _, c_name.as_ptr(), c_json.as_ptr()) };
 
@@ -167,7 +177,7 @@ mod ffi {
             let s = unsafe {
                 CStr::from_ptr(result.data)
                     .to_str()
-                    .map_err(|_| PluginCallError::InvalidUtf8)?
+                    .map_err(|_| CallError::InvalidUtf8)?
                     .to_owned()
             };
 
@@ -181,7 +191,7 @@ mod ffi {
 
     impl Display for Plugin {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{} version {}", self.name(), self.version())
+            write!(f, "{} v{}", self.name(), self.version())
         }
     }
 }

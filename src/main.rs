@@ -23,14 +23,7 @@ async fn main() {
     let cl_plg_tx = plg_tx.clone();
     thread::spawn(move || user_input(cl_plg_tx));
 
-    thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .expect("Could not build runtime");
-
-        rt.block_on(plugin_handler(plg_rx));
-    });
+    tokio::spawn(plugin_handler(plg_rx));
 
     let listener = TcpListener::bind(DEFAULT_ADDR)
         .await

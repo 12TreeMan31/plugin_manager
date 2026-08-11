@@ -1,4 +1,4 @@
-/// Example on how to write a plugin in C though it should be about the same in Rust.
+/// Example on how to write a plugin in C. It should be about the same in Rust.
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -46,6 +46,6 @@ PluginInfo info = {
     .string_free = string_free,
 };
 
-PluginInfo *plg_endpoints(void) {
+const PluginInfo *plg_endpoints(void) {
     return &info;
 }

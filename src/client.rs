@@ -45,25 +45,21 @@ impl Client<Connected> {
         plg_tx: &mpsc::UnboundedSender<(PluginMessage, oneshot::Sender<Option<String>>)>,
     ) -> Option<Client<Registered>> {
         // Sets up the message
-        println!("1");
         let (tx, rx) = oneshot::channel();
         let msg = PluginMessage::Exists {
             plugin: self.plugin.clone(),
         };
 
-        println!("2");
         if let Err(e) = plg_tx.send((msg, tx)) {
             println!("Error: {}", e);
             return None;
         }
 
-        println!("3");
         let Some(ret) = rx.await.expect("Wont fail") else {
             println!("Did not get a string");
             return None;
         };
 
-        println!("4");
         println!("{}", ret);
         if ret == "false" {
             let err = Message::Text(r#"{"kind":"error","msg":"plugin is not registered"}"#.into());
@@ -73,10 +69,8 @@ impl Client<Connected> {
             return None;
         }
 
-        println!("5");
         let ok = Message::Text(r#"{"kind":"ok","msg":"success"}"#.into());
 
-        println!("6");
         let _ = self.stream.send(ok).await;
 
         Some(Client {
