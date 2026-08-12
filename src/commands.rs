@@ -1,11 +1,9 @@
-use crate::plugin::PluginMessage;
+use crate::plugin::{Request, Response};
 use std::io::{self, BufRead};
 use tokio::sync::{mpsc, oneshot};
 
 /// Does not return as this should be running on other thread for the duration of the program
-pub fn user_input(
-    plg_tx: mpsc::UnboundedSender<(PluginMessage, oneshot::Sender<Option<String>>)>,
-) -> ! {
+pub fn user_input(plg_tx: mpsc::UnboundedSender<(Request, oneshot::Sender<Response>)>) -> ! {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
 
@@ -37,7 +35,7 @@ pub fn user_input(
                         continue;
                     }
                 };
-                PluginMessage::Register { dir }
+                Request::Register { dir }
             }
             Some("remove") => {
                 let plugin = match iter.next() {
@@ -47,9 +45,9 @@ pub fn user_input(
                         continue;
                     }
                 };
-                PluginMessage::Deregister { plugin }
+                Request::Deregister { plugin }
             }
-            Some("list") => PluginMessage::List,
+            Some("list") => Request::List,
             Some(other) => {
                 println!("Unknown command: {}", other);
                 continue;
@@ -66,9 +64,12 @@ pub fn user_input(
 
         // Waits for the request to be processed
         match rx.blocking_recv() {
-            Ok(Some(res)) => println!("{}", res),
-            Ok(None) => println!("Command finished"),
-            Err(e) => println!("Dropped: {}", e),
+            Ok(Response::List(m)) => println!("{}", m),
+            Ok(Response::Success) => println!("Operation finished!"),
+
+            Ok(Response::Failed(m)) => println!("Error: {:?}", m),
+            Err(e) => println!("Error: {}", e),
+            _ => print!("Unahndled"),
         }
     }
 }

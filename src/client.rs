@@ -1,10 +1,10 @@
-use crate::plugin::PluginMessage;
+use crate::plugin::{Request, Response};
 use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::{WebSocketStream, accept_hdr_async};
 use tungstenite::Message;
-use tungstenite::handshake::server::{ErrorResponse, Request, Response};
+use tungstenite::handshake::server::{ErrorResponse, Request as Req, Response as Res};
 use tungstenite::http::HeaderMap;
 
 fn status_fmt(kind: &str, msg: &str) -> String {
@@ -42,11 +42,11 @@ impl Client<Connected> {
 
     pub async fn register(
         mut self,
-        plg_tx: &mpsc::UnboundedSender<(PluginMessage, oneshot::Sender<Option<String>>)>,
+        plg_tx: &mpsc::UnboundedSender<(Request, oneshot::Sender<Response>)>,
     ) -> Option<Client<Registered>> {
         // Sets up the message
         let (tx, rx) = oneshot::channel();
-        let msg = PluginMessage::Exists {
+        let msg = Request::Exists {
             plugin: self.plugin.clone(),
         };
 
@@ -55,13 +55,13 @@ impl Client<Connected> {
             return None;
         }
 
-        let Some(ret) = rx.await.expect("Wont fail") else {
+        let Response::Exists(ret) = rx.await.expect("Wont fail") else {
             println!("Did not get a string");
             return None;
         };
 
         println!("{}", ret);
-        if ret == "false" {
+        if !ret {
             let err = Message::Text(r#"{"kind":"error","msg":"plugin is not registered"}"#.into());
             let _ = self.stream.send(err).await;
             tokio::time::sleep(tokio::time::Duration::new(1, 0)).await;
@@ -83,7 +83,7 @@ impl Client<Connected> {
 impl Client<Registered> {
     async fn handle_request(
         &mut self,
-        plg_tx: mpsc::UnboundedSender<(PluginMessage, oneshot::Sender<Option<String>>)>,
+        plg_tx: mpsc::UnboundedSender<(Request, oneshot::Sender<Response>)>,
     ) {
         let Some(Ok(res)) = self.stream.next().await else {
             return;
@@ -95,7 +95,7 @@ impl Client<Registered> {
         let msg = res.into_text().unwrap().to_string();
         let (func, json) = msg.split_once('-').unwrap();
 
-        let plg_msg = PluginMessage::Message {
+        let plg_msg = Request::Message {
             plugin: self.plugin.clone(),
             func: func.to_string(),
             data: json.to_string(),
@@ -103,7 +103,9 @@ impl Client<Registered> {
         let (tx, rx) = oneshot::channel();
         plg_tx.send((plg_msg, tx)).unwrap();
 
-        let ret = rx.await.unwrap().unwrap();
+        let Response::Message(ret) = rx.await.unwrap() else {
+            return;
+        };
         self.stream.send(Message::Text(ret.into())).await;
     }
 }
@@ -141,7 +143,7 @@ async fn accept_connection(stream: TcpStream) -> Result<Client<Connected>, Strin
     let mut plugin = Default::default();
     let mut computer = Default::default();
 
-    let ws_stream = accept_hdr_async(stream, |req: &Request, res: Response| {
+    let ws_stream = accept_hdr_async(stream, |req: &Req, res: Res| {
         let headers = req.headers();
         (plugin, computer) = extract_headers(headers).map_err(|e| ErrorResponse::new(Some(e)))?;
 
@@ -155,7 +157,7 @@ async fn accept_connection(stream: TcpStream) -> Result<Client<Connected>, Strin
 
 pub async fn handle_connection(
     stream: TcpStream,
-    plg_tx: mpsc::UnboundedSender<(PluginMessage, oneshot::Sender<Option<String>>)>,
+    plg_tx: mpsc::UnboundedSender<(Request, oneshot::Sender<Response>)>,
 ) {
     let client = match accept_connection(stream).await {
         Ok(c) => c,
@@ -170,7 +172,7 @@ pub async fn handle_connection(
         return;
     };
 
-    client
+    let _ = client
         .stream
         .send(Message::Text(status_fmt("ok", "yay").into()))
         .await;

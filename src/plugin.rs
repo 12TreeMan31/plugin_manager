@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 use std::str;
 use tokio::sync::{mpsc, oneshot};
 
-type Sender = mpsc::UnboundedSender<(PluginMessage, oneshot::Sender<Option<String>>)>;
-
+#[derive(Debug)]
 pub enum CallError {
     NullByte,
     InvalidUtf8,
@@ -87,7 +86,7 @@ impl Display for PluginManager {
     }
 }
 
-pub enum PluginMessage {
+pub enum Request {
     Message {
         plugin: String,
         func: String,
@@ -109,10 +108,12 @@ pub enum Response {
     Message(String),
     List(String),
     Exists(bool),
+    Success,
+    Failed(CallError),
 }
 
 pub async fn plugin_handler(
-    mut rx: mpsc::UnboundedReceiver<(PluginMessage, oneshot::Sender<Option<String>>)>,
+    mut rx: mpsc::UnboundedReceiver<(Request, oneshot::Sender<Response>)>,
 ) -> ! {
     let mut manager = PluginManager::new();
 
@@ -122,19 +123,20 @@ pub async fn plugin_handler(
         };
 
         let stat = match cmd {
-            PluginMessage::Message { plugin, func, data } => {
-                manager.call(&plugin, &func, &data).ok()
-            }
-            PluginMessage::Register { dir } => {
-                manager.register(&dir);
-                None
-            }
-            PluginMessage::Deregister { plugin } => {
-                manager.deregister(&plugin);
-                None
-            }
-            PluginMessage::List => Some(manager.to_string()),
-            PluginMessage::Exists { plugin } => Some(manager.exists(&plugin).to_string()),
+            Request::Message { plugin, func, data } => match manager.call(&plugin, &func, &data) {
+                Ok(json) => Response::Message(json),
+                Err(e) => Response::Failed(e),
+            },
+            Request::Register { dir } => match manager.register(&dir) {
+                Ok(()) => Response::Success,
+                Err(e) => Response::Failed(e),
+            },
+            Request::Deregister { plugin } => match manager.deregister(&plugin) {
+                Ok(()) => Response::Success,
+                Err(e) => Response::Failed(e),
+            },
+            Request::List => Response::List(manager.to_string()),
+            Request::Exists { plugin } => Response::Exists(manager.exists(&plugin)),
         };
 
         let _ = tx.send(stat);
