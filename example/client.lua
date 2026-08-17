@@ -1,23 +1,20 @@
-local pluginURL = "ws://127.0.0.1:8080"
+local addr = "127.0.0.1:8080"
+local addr_ws = "ws://" .. addr
+local addr_http = "http://" .. addr
 
-print("Connecting to", pluginURL)
+print("Waiting on network...")
 while true do
-    local (_, character) = os.pullEvent("char")
-    if character = 'q' then
-        return
-    end
-
-    local rc = http.checkURL(pluginURL)
-    if rc then
-        print("Found Server!")
+    local stat = http.checkURL(addr_http)
+    if stat then
         break
     end
-    sleep(5)
+    sleep(1)
 end
 
-local ws = http.websocket(pluginURL, {
-    ["Computer-Name"] = "CraftOS-Example"
-    ["Plugin-Name"] = "example"
+local ws = http.websocket(addr_ws, {
+    ["Computer-Name"] = "Flash-Setup",
+    ["Plugin-Name"] = "flash"
 })
-print("Connected to Server!")
+print("Connected to " .. addr_ws)
 
+-- Write your client code there...

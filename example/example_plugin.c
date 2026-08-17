@@ -25,7 +25,7 @@ PluginString goodbye(const char *_json) {
     return ret;
 }
 
-const PluginFunction functions[] = {
+PluginFunction functions[] = {
     {"hello", hello_fmt},
     {"goodbye", goodbye},
 };

@@ -51,6 +51,6 @@ typedef struct {
 } PluginInfo;
 
 /// Plugin entrypoint
-typedef const PluginInfo *(*plg_endpoints)(void);
+// typedef const PluginInfo *(*plg_endpoints)(void);
 
 #endif
