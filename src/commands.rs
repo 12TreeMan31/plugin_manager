@@ -2,6 +2,22 @@ use crate::plugin::{Request, Response};
 use std::io::{self, BufRead};
 use tokio::sync::{mpsc, oneshot};
 
+/// Commands
+/// List [clients | plugins]
+/// Scan
+/// Load [path]
+/// Unload [plugin name]
+
+/*fn parse_input(buf: &str) -> Option<Request> {
+    let mut iter = buf.trim().split_whitespace().array_chunks::<2>();
+
+    match command {
+        ("load", a) => {}
+        ("list", a) => {}
+        ("scan", a) => {}
+    }
+}*/
+
 /// Does not return as this should be running on other thread for the duration of the program
 pub fn user_input(plg_tx: mpsc::UnboundedSender<(Request, oneshot::Sender<Response>)>) -> ! {
     let stdin = io::stdin();

@@ -18,3 +18,10 @@ local ws = http.websocket(addr_ws, {
 print("Connected to " .. addr_ws)
 
 -- Write your client code there...
+
+-- Example with example_plugin
+local msg = "hello-John"
+ws.send(msg)
+local res = ws.receive(3)
+print(res)
+sleep(5)

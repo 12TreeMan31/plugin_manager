@@ -1,25 +1,18 @@
 use crate::plugin::{Request, Response};
 use futures::{SinkExt, StreamExt};
+use std::marker::PhantomData;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::{WebSocketStream, accept_hdr_async};
-use tungstenite::Message;
 use tungstenite::handshake::server::{ErrorResponse, Request as Req, Response as Res};
 use tungstenite::http::HeaderMap;
+use tungstenite::{Error as WSError, Message};
 
 fn status_fmt(kind: &str, msg: &str) -> String {
     format!("{{\"kind\":\"{kind}\",\"msg\":\"{msg}\"}}")
 }
 
-/// One thing you might noticed is that there are many spots when creating the connection
-/// where we close the socket if there is an error instead of setting it to Client<Disconnected>.
-/// The reasoning for this is that we want to keep a socket alive for as long as possble, and try
-/// to handle the error without closing the socket
-enum Disconnected {
-    MissingPlugin,
-    Error(String),
-}
-
+struct Disconnected;
 struct Connected;
 struct Registered;
 struct Client<State> {
@@ -27,7 +20,7 @@ struct Client<State> {
     computer: String,
     plugin: String,
 
-    state: State,
+    state: PhantomData<State>,
 }
 
 impl Client<Connected> {
@@ -36,7 +29,7 @@ impl Client<Connected> {
             stream,
             computer,
             plugin: namespace,
-            state: Connected,
+            state: PhantomData,
         }
     }
 
@@ -74,7 +67,7 @@ impl Client<Connected> {
         let _ = self.stream.send(ok).await;
 
         Some(Client {
-            state: Registered,
+            state: PhantomData,
             ..self
         })
     }
@@ -84,15 +77,17 @@ impl Client<Registered> {
     async fn handle_request(
         &mut self,
         plg_tx: mpsc::UnboundedSender<(Request, oneshot::Sender<Response>)>,
-    ) {
-        let Some(Ok(res)) = self.stream.next().await else {
-            return;
+    ) -> Result<(), WSError> {
+        let req = match self.stream.next().await {
+            Some(req) => req?,
+            None => return Err(WSError::ConnectionClosed),
         };
 
-        if !res.is_text() {
-            return;
-        }
-        let msg = res.into_text().unwrap().to_string();
+        let msg = match req {
+            Message::Text(req) => req.to_string(),
+            _ => return Err(WSError::Io(std::io::ErrorKind::InvalidData.into())),
+        };
+
         let (func, json) = msg.split_once('-').unwrap();
 
         let plg_msg = Request::Message {
@@ -104,9 +99,10 @@ impl Client<Registered> {
         plg_tx.send((plg_msg, tx)).unwrap();
 
         let Response::Message(ret) = rx.await.unwrap() else {
-            return;
+            unreachable!()
         };
-        self.stream.send(Message::Text(ret.into())).await;
+        self.stream.send(Message::Text(ret.into())).await?;
+        Ok(())
     }
 }
 
@@ -155,6 +151,15 @@ async fn accept_connection(stream: TcpStream) -> Result<Client<Connected>, Strin
     Ok(Client::new(ws_stream, computer, plugin))
 }
 
+/// There should only be three ways to kill a connection
+/// 1. The client closes the stream
+/// 2. The user enters a command to kill
+/// 3. The client didn't provide the proper headers
+///
+/// With this in mind we need three states to represent a connection.
+/// * Connected: A new client has just connected needs to be validated
+/// * Registered: The client is valid and the requested plugin is loaded
+/// * Disconnected: The client was valid but the plugin isn't loaded.
 pub async fn handle_connection(
     stream: TcpStream,
     plg_tx: mpsc::UnboundedSender<(Request, oneshot::Sender<Response>)>,
@@ -172,12 +177,9 @@ pub async fn handle_connection(
         return;
     };
 
-    let _ = client
-        .stream
-        .send(Message::Text(status_fmt("ok", "yay").into()))
-        .await;
-
     loop {
-        client.handle_request(plg_tx.clone()).await;
+        let Ok(_) = client.handle_request(plg_tx.clone()).await else {
+            return;
+        };
     }
 }
